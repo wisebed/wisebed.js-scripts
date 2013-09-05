@@ -1,0 +1,5 @@
+{
+  "rest_api_url" : "http://localhost:9999/rest/v1/",
+  "username"     : "abcdefg",
+  "password"     : "gfedcba"
+}
