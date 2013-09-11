@@ -31,13 +31,18 @@ only want to reset the nodes that were successfully flashed you will have to mod
 the above command to "wb reset `wb flash -t isense39 -o success`" or "-o error" in
 the other case.
 
-wb nodes                 WB_TESTBED                [NODES_FILTER] [-v|--verbose]                   - lists available testbed nodes. If -v is given sensor node details are also printed.
+Some commands take time ranges as arguments. A time range can either be specified by
+passing a tuple of -d|--duration and -o|--offset (where offset is optional, 0 is default)
+or a tuple of -f|--from and -u|--until. Time ranges options are denoted with TIME_RANGE
+below. 
+
+wb nodes                 WB_TESTBED                [NODES_FILTER] [-d|--details]                   - lists available testbed nodes. If -d is given sensor node details are also printed.
 wb reserved-nodes        WB_TESTBED WB_RESERVATION [NODES_FILTER] [-v|--verbose]                   - lists resered nodes. If -v is given sensor node details are also printed.
-wb make-reservation      WB_TESTBED                [NODES_FILTER] -D|--duration [-O|--offset]      - tries to reserve the given/all nodes for duration "-D|--duration" starting from "-O|--ofset"
-wb list-reservations     WB_TESTBED [-a|--all] [-f|--from DATE] [-t|--to DATE]                     - lists personal reservations in timespan (or all reservations if -a|--all is given)
+wb make-reservation      WB_TESTBED                [NODES_FILTER] TIME_RANGE                       - tries to reserve the given/all nodes for duration "-D|--duration" starting from "-O|--ofset"
+wb list-reservations     WB_TESTBED                               [TIME_RANGE] [-a|--all]          - lists personal reservations in timespan (or all reservations if -a|--all is given)
 wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
 wb listen                WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - listens to sensor node outputs
-wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-o|--output] [-m bin|ascii] MSG - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
+wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
 wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
 wb flash                 WB_TESTBED WB_RESERVATION [NODES_FILTER] img.bin                          - flashes nodes with provided image
 wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling SM.areNodesAlive()
@@ -50,7 +55,7 @@ wb disable-vlink         WB_TESTBED WB_RESERVATION                N1=N2([,N3=N4]
 wb wiseml                WB_TESTBED                                                                - prints the testbeds WiseML file
 wb reserved-wiseml       WB_TESTBED WB_RESERVATION                                                 - prints the WiseML file, constained to the reserved nodes
 
-*/
+ */
 
 function readConfigFromFile(filename) {
   var fs = require('fs');
@@ -78,76 +83,173 @@ function readConfigFromFile(filename) {
   return config;
 }
 
-function executeNodesCommand() {
-  console.log('nodesCommand');
+function readConfigOrExit() {
+  if (commander.config) {
+    console.log("Reading config from file");
+    config = readConfigFromFile(commander.c);
+  } else if (process.env.WB_TESTBED) {
+    console.log("Reading config from WB_TESTBED");
+    config = readConfigFromFile(process.env.WB_TESTBED);
+  } else {
+    console.log("Application parameter '-c' ('--config') is missing!");
+    process.exit(1);
+  }
+}
+
+function filterWiseMLSetupForNodeTypes(nodeTypes, wiseMLNodeArr) {
+  var nodeTypesArr = typeof nodeTypes == "string" ? nodeTypes.split(",") : nodeTypesArr;
+  return wiseMLNodeArr.filter(function(node) { return nodeTypesArr.indexOf(node.nodeType) > -1 });
+};
+
+function filterWiseMLSetupForSensors(sensors, wiseMLNodeArr) {
+  var sensorsArr = typeof sensors == "string" ? sensors.split(",") : sensors;
+  return wiseMLNodeArr.filter(function(node) {
+  	var capNames = node.capability.map(function (cap) { return cap.name; });
+  	for (var i=0; i<capNames.length; i++) {
+  	  for (var j=0; j< sensorsArr.length; j++) {
+  	  	if (capNames[i].indexOf(sensorsArr[j]) > -1) {
+  	      return true;
+  	  	}
+  	  }
+  	}
+  	return false;
+  });
+};
+
+function nodeToString(node) {
+  return node.id;
+};
+
+function nodeToStringDetails(node) {
+  var pos = [];
+  var caps = [];
+  if (node.position) {
+    for (var att in node.position) {
+      pos.push(att + "=" + node.position[att]);
+    }
+  }
+  if (node.capability) {
+  	for (var att in node.capability) {
+  	  caps.push(node.capability[att].name.indexOf('urn:wisebed:node:capability:') > - 1 ?
+  	  	node.capability[att].name.substring('urn:wisebed:node:capability:'.length) :
+  	  	node.capability[att].name
+  	  );
+  	}
+  }
+  return node.id + " | " + pos.join(",") + " | " + caps.join(",");
+};
+
+function executeNodesCommand(options) {
+  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+  var onSuccess = function(wiseml) {
+  	var nodes = wiseml.setup.node;
+    if (options.types) {
+      nodes = filterWiseMLSetupForNodeTypes(options.types, nodes);
+    }
+    if (options.sensors) {
+      nodes = filterWiseMLSetupForSensors(options.sensors, nodes);
+    }
+    console.log(nodes.map(options.details ? nodeToStringDetails : nodeToString).join("\n"));
+  };
+  var onFailure = function(wiseML, textStatus, jqXHR) {
+    console.log("Error while fetching nodes from testbed: %s %s", textStatus, jqXHR);
+    process.exit(1);
+  };
+  testbed.getWiseML(null, onSuccess, onFailure, "json");
 }
 
 function executeReservedNodesCommand() {
   console.log('reservedNodesCommand');
 }
 
-function addCommonOptions(command) {
+function executeMakeReservationCommand() {
+  console.log('makeReservationCommand');
+}
+
+function executeListReservationsCommand() {
+  
+  var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+
+  var now = new Date();
+  var nextYear = new Date();
+  nextYear.setDate(now.getDate() + 365);
+
+  function onGetPersonalReservationsSuccess(data) {
+    if (data.reservations && data.reservations.length > 0) {
+      console.log(data.reservations);
+    }
+    process.exit(0);
+  }
+
+  function onGetPersonalReservationsFailure(jqXHR, textStatus, errorThrown) {
+    console.log(jqXHR);
+    console.log(textStatus);
+    console.log(errorThrown);
+  }
+
+  testbed.reservations.getPublic(now, nextYear, onGetPersonalReservationsSuccess, onGetPersonalReservationsFailure);
+}
+
+function addNodeFilterOptions(command) {
+
   var commonOptions = {
-    "-t, --type"   : "comma-separated list of node types to include",
-    "-s, --sensor" : "comma-separated list of sensors to filter for"
+    "-t, --types <types>"     : "comma-separated list of node types to include",
+    "-s, --sensors <sensors>" : "comma-separated list of sensors to filter for",
+    "-c, --config <config>"   : "config file containing testbed configuration"
   };
+
   for (var option in commonOptions) {
     command.option(option, commonOptions[option]);
   }
+
   return command;
 }
 
+var $ = require('jquery');
 var commander = require('commander');
+var wisebed = require('wisebed.js');
 var config;
+
+var commands = {
+  'nodes' : {
+    description       : 'list available nodes',
+    action            : executeNodesCommand,
+    nodeFilterOptions : true,
+    options           : { "-d, --details" : "show sensor node details" }
+  },
+  'reserved-nodes' : {
+    description       : 'list nodes of current reservation',
+    action            : executeReservedNodesCommand,
+    nodeFilterOptions : true
+  },
+  'make-reservation' : {
+    description       : 'makes a reservation',
+    action            : executeMakeReservationCommand,
+    nodeFilterOptions : true
+  },
+  'list-reservations' : {
+    description       : 'lists existing reservations',
+    action            : executeListReservationsCommand,
+    nodeFilterOptions : true
+  }
+};
 
 commander
   .version('1.0')
-  .option('-c, --config', 'Path to config file containing testbed configuration')
   .option('-H, --helpConfig', 'Print out help about the configuration file')
 
-var nodesCommand = addCommonOptions(commander
-  .command('nodes')
-  .description('list available nodes')
-  .action(executeNodesCommand));
-
-var reservedNodesCommand = addCommonOptions(
-  commander
-    .command('reserved-nodes')
-    .description('list nodes of current reservation') 
-    .action(executeReservedNodesCommand));
-  
-commander.parse(process.argv);
-
-if (commander.config) {
-  config = readConfigFromFile(commander.c);
-} else if (process.env.WB_TESTBED) {
-  config = readConfigFromFile(process.env.WB_TESTBED);
-} else {
-  console.log("Application parameter '-c' ('--config') is missing!");
-  process.exit(1);
-}
-
-/*
-var $ = require('jquery');
-var wisebed = require('wisebed.js');
-var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-
-var now = new Date();
-var nextYear = new Date();
-nextYear.setDate(now.getDate() + 365);
-
-function onGetPersonalReservationsSuccess(data) {
-  if (data.reservations && data.reservations.length > 0) {
-    console.log(data.reservations);
+for (var name in commands) {
+  var cmd = commander
+    .command(name)
+    .description(commands[name].description)
+    .action(commands[name].action);
+  if (commands[name].nodeFilterOptions) {
+      addNodeFilterOptions(cmd);
   }
-  process.exit(0);
+  for (option in commands[name].options) {
+  	cmd.option(option, commands[name].options[option]);
+  }
 }
 
-function onGetPersonalReservationsFailure(jqXHR, textStatus, errorThrown) {
-  console.log(jqXHR);
-  console.log(textStatus);
-  console.log(errorThrown);
-}
-
-testbed.reservations.getPublic(now, nextYear, onGetPersonalReservationsSuccess, onGetPersonalReservationsFailure);
-*/
+commander.parse(process.argv);
