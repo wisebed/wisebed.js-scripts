@@ -193,7 +193,7 @@ function executeListReservationsCommand(options) {
 }
 
 function executeListen(options) {
-  
+
   var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 
@@ -210,10 +210,25 @@ function executeListen(options) {
 
   if (events) {
     eventWebSocket = new testbed.EventWebSocket(
-      function(devicesAttachedEvent) { console.log(devicesAttachedEvent); },
-      function(devicesDetachedEvent) { console.log(devicesDetachedEvent); },
-      function(onOpenEvent) { console.log(onOpenEvent); },
-      function(onCloseEvent) { console.log(onCloseEvent); }
+      function(devicesAttachedEvent) { console.log(devicesAttachedEvent);  },
+      function(devicesDetachedEvent) { console.log(devicesDetachedEvent);  },
+      function(onOpenEvent)          { /* nothing to do here, is there? */ },
+      function(onCloseEvent)         { /* nothing to do here, is there? */ }
+    );
+  }
+
+  if (outputs) {
+    outputsWebSocket = new testbed.WebSocket(
+      options.experimentId,
+      function(message)      {
+        if (message.type == 'reservationEnded') {
+          console.log('Reservation ended. Exiting.');
+          process.exit(0);
+        }
+        console.log(message);
+      },
+      function(onOpenEvent)  { /* nothing to do here, is there? */ },
+      function(onCloseEvent) { /* nothing to do here, is there? */ }
     );
   }
 }
@@ -265,8 +280,9 @@ var commands = {
     action            : executeListen,
     nodeFilterOptions : true,
     options           : {
-      "-o, --outputsOnly" : "show sensor node outputs only",
-      "-e, --eventsOnly"  : "show testbed events only",
+      "-o, --outputsOnly"  : "show sensor node outputs only",
+      "-e, --eventsOnly"   : "show testbed events only",
+      "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))"
     }
   }
 };
