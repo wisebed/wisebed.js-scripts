@@ -167,8 +167,9 @@ function executeMakeReservationCommand() {
   console.log('makeReservationCommand');
 }
 
-function executeListReservationsCommand() {
+function executeListReservationsCommand(options) {
   
+  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 
   var now = new Date();
@@ -189,6 +190,32 @@ function executeListReservationsCommand() {
   }
 
   testbed.reservations.getPublic(now, nextYear, onGetPersonalReservationsSuccess, onGetPersonalReservationsFailure);
+}
+
+function executeListen(options) {
+  
+  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+
+  if (options.outputsOnly && options.eventsOnly) {
+    console.log("Both --outputsOnly and --eventsOnly given. Doesn't make sense. Exiting.");
+    process.exit(1);
+  }
+  
+  var events = !options.outputsOnly;
+  var outputs = !options.eventsOnly;
+
+  var eventWebSocket;
+  var outputsWebSocket;
+
+  if (events) {
+    eventWebSocket = new testbed.EventWebSocket(
+      function(devicesAttachedEvent) { console.log(devicesAttachedEvent); },
+      function(devicesDetachedEvent) { console.log(devicesDetachedEvent); },
+      function(onOpenEvent) { console.log(onOpenEvent); },
+      function(onCloseEvent) { console.log(onCloseEvent); }
+    );
+  }
 }
 
 function addNodeFilterOptions(command) {
@@ -232,6 +259,15 @@ var commands = {
     description       : 'lists existing reservations',
     action            : executeListReservationsCommand,
     nodeFilterOptions : true
+  },
+  'listen' : {
+    description       : 'listens to node outputs and testbed events',
+    action            : executeListen,
+    nodeFilterOptions : true,
+    options           : {
+      "-o, --outputsOnly" : "show sensor node outputs only",
+      "-e, --eventsOnly"  : "show testbed events only",
+    }
   }
 };
 
