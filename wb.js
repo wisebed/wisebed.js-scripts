@@ -168,28 +168,35 @@ function executeMakeReservationCommand() {
 }
 
 function executeListReservationsCommand(options) {
-  
+
   var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 
-  var now = new Date();
-  var nextYear = new Date();
-  nextYear.setDate(now.getDate() + 365);
+  var from = options.from ? moment(options.from) : new Date();
+  var to = options.to ? moment(options.to) : null;
 
-  function onGetPersonalReservationsSuccess(data) {
-    if (data.reservations && data.reservations.length > 0) {
-      console.log(data.reservations);
+  if (options.all) {
+    
+    function onGetPublicReservationsSuccess(reservations) {
+      reservations.forEach(function(reservation) {
+        var dateFormat = 'YYYY-MM-DD HH:mm:ss';
+        console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " => [" + reservation.nodeUrns.join(",") + "]");
+      });
+      process.exit(0);
+	}
+
+    function onGetPublicReservationsFailure(jqXHR, textStatus, errorThrown) {
+      console.log(jqXHR);
+      console.log(textStatus);
+      console.log(errorThrown);
     }
-    process.exit(0);
-  }
 
-  function onGetPersonalReservationsFailure(jqXHR, textStatus, errorThrown) {
-    console.log(jqXHR);
-    console.log(textStatus);
-    console.log(errorThrown);
-  }
+  	testbed.reservations.getPublic(from, to, onGetPublicReservationsSuccess, onGetPublicReservationsFailure);
 
-  testbed.reservations.getPublic(now, nextYear, onGetPersonalReservationsSuccess, onGetPersonalReservationsFailure);
+  } else {
+
+    testbed.reservations.getPersonal()
+  }
 }
 
 function executeListen(options) {
@@ -251,6 +258,7 @@ function addNodeFilterOptions(command) {
 var $ = require('jquery');
 var commander = require('commander');
 var wisebed = require('wisebed.js');
+var moment  = require('moment');
 var config;
 
 var commands = {
@@ -271,17 +279,22 @@ var commands = {
     nodeFilterOptions : true
   },
   'list-reservations' : {
-    description       : 'lists existing reservations',
+    description       : 'lists existing reservations (default query: all reservations currently running or starting in the future)',
     action            : executeListReservationsCommand,
-    nodeFilterOptions : true
+    nodeFilterOptions : true,
+    options           : {
+      "-a, --all"              : "lists all reservations (default: only personal reservations)",
+      "-f, --from  <datetime>" : "date and time of the query interval start (see moment.js documentation for allowed syntax)",
+      "-u, --until <datetime>" : "date and time of the query interval end   (see moment.js documentation for allowed syntax)"
+    }
   },
   'listen' : {
     description       : 'listens to node outputs and testbed events',
     action            : executeListen,
     nodeFilterOptions : true,
     options           : {
-      "-o, --outputsOnly"  : "show sensor node outputs only",
-      "-e, --eventsOnly"   : "show testbed events only",
+      "-o, --outputsOnly"                 : "show sensor node outputs only",
+      "-e, --eventsOnly"                  : "show testbed events only",
       "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))"
     }
   }

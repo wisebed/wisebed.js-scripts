@@ -1,9 +1,10 @@
 {
   "name" : "wb.js",
   "main" : "wb.js",
-  "version" : "1.0",
+  "version" : "0.1.0",
   "dependencies" : {
     "wisebed.js" : "1.0",
-    "commander"  : "2.0.0"
+    "commander"  : "2.0.0",
+    "moment"     : "2.4.0"
   }
 }
