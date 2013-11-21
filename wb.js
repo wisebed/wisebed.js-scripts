@@ -298,13 +298,15 @@ function executeListen(options) {
 
   if (outputs) {
 
-  	if (!options.experimentId) {
+    var experimentId = options.experimentId || process.env['WB_RESERVATION'];
+
+  	if (!experimentId) {
   	  console.error('Parameter "experimentId" missing. Exiting.');
   	  process.exit(1);
   	}
 
     outputsWebSocket = new testbed.WebSocket(
-      options.experimentId,
+      experimentId,
       function(message)      {
 
       	if (message.type == 'reservationEnded') {
@@ -336,12 +338,61 @@ function executeListen(options) {
   }
 }
 
+function executeFlash(options) {
+
+  var config       = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var testbed      = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+  var experimentId = options.experimentId || process.env['WB_RESERVATION'];
+  var jsonConfig;
+
+  if (!experimentId) {
+    console.error('Parameter "experimentId" missing. Exiting.');
+    process.exit(1);
+  }
+
+  if (options.file) {
+
+    jsonConfig = JSON.parse(fs.readFileSync(options.file));
+    jsonConfig.configurations.forEach(function(configuration) {
+      if (!configuration.image && configuration.imageFile) {
+      	configuration.image = "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile));
+      	delete configuration.imageFile;
+      }
+    });
+
+  } else if (options.image && options.nodes) {
+
+  	jsonConfig = {
+  		configurations : [{
+  			nodeUrns : options.nodes,
+  			image    : "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile))
+  		}]
+  	}
+  }
+
+  var callbackDone = function(result) {
+    console.log(result);
+  };
+
+  var callbackProgress = function(progress) {
+  	console.log(progress);
+  };
+
+  var callbackError = function(jqXHR, textStatus, errorThrown) {
+    console.log(jqXHR);
+    console.log(textStatus);
+    console.log(errorThrown);
+  };
+
+  testbed.experiments.flashNodes(experimentId, jsonConfig, callbackDone, callbackProgress, callbackError);
+}
+
 function addNodeFilterOptions(command) {
 
   var commonOptions = {
-    "-t, --types <types>"     : "comma-separated list of node types to include",
+    "-t, --types   <types>"   : "comma-separated list of node types to include",
     "-s, --sensors <sensors>" : "comma-separated list of sensors to filter for",
-    "-c, --config <config>"   : "config file containing testbed configuration"
+    "-c, --config  <config>"  : "config file containing testbed configuration"
   };
 
   for (var option in commonOptions) {
@@ -352,6 +403,7 @@ function addNodeFilterOptions(command) {
 }
 
 var $         = require('jquery');
+var fs        = require('fs');
 var commander = require('commander');
 var wisebed   = require('wisebed.js');
 var moment    = require('moment');
@@ -398,6 +450,17 @@ var commands = {
       "-o, --outputsOnly"                 : "show sensor node outputs only",
       "-e, --eventsOnly"                  : "show testbed events only",
       "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))"
+    }
+  },
+  'flash' : {
+  	description       : 'flashes nodes',
+    action            : executeFlash,
+    nodeFilterOptions : true,
+    options           : {
+      "-i, --image <image>"               : "path to image file to be flashed  (if -f/--file is not used)",
+      "-n, --nodes <nodes>"               : "a list of node URNs to be flashed (if -f/--file is not used)",
+      "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))",
+      "-f, --file <file>"                 : "a flash configuration file"
     }
   }
 };
