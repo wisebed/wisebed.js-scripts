@@ -134,6 +134,65 @@ function nodeToStringDetails(node) {
   return node.id + " | " + pos.join(",") + " | " + caps.join(",");
 };
 
+var replacements = [];
+for (var i = -128; i < 0; i++) {
+	replacements[128 + i] = "[0x" + (i & 0xFF).toString(16).toUpperCase() + "]";
+}
+replacements[128 + 0x00] = "[NUL]";
+replacements[128 + 0x01] = "[SOH]";
+replacements[128 + 0x02] = "[STX]";
+replacements[128 + 0x03] = "[ETX]";
+replacements[128 + 0x04] = "[EOT]";
+replacements[128 + 0x05] = "[ENQ]";
+replacements[128 + 0x06] = "[ACK]";
+replacements[128 + 0x07] = "[BEL]";
+replacements[128 + 0x08] = "[BS]";
+replacements[128 + 0x09] = "[TAB]";
+replacements[128 + 0x0a] = "[LF]";
+replacements[128 + 0x0b] = "[VT]";
+replacements[128 + 0x0c] = "[FF]";
+replacements[128 + 0x0d] = "[CR]";
+replacements[128 + 0x0e] = "[SO]";
+replacements[128 + 0x0f] = "[SI]";
+replacements[128 + 0x10] = "[DLE]";
+replacements[128 + 0x11] = "[DC1]";
+replacements[128 + 0x12] = "[DC2]";
+replacements[128 + 0x13] = "[DC3]";
+replacements[128 + 0x14] = "[DC4]";
+replacements[128 + 0x15] = "[NACK]";
+replacements[128 + 0x16] = "[SYN]";
+replacements[128 + 0x17] = "[ETB]";
+replacements[128 + 0x18] = "[CAN]";
+replacements[128 + 0x19] = "[EM]";
+replacements[128 + 0x1a] = "[SUB]";
+replacements[128 + 0x1b] = "[ESC]";
+replacements[128 + 0x1c] = "[FS]";
+replacements[128 + 0x1d] = "[GS]";
+replacements[128 + 0x1e] = "[RS]";
+replacements[128 + 0x1f] = "[US]";
+for (var k = 0x20; k < 0x7f; k++) {
+	replacements[128 + k] = String.fromCharCode(k);
+}
+replacements[128 + 0x7f] = "[DEL]";
+
+function replaceNonPrintableAsciiCharacters(text) {
+	var result = '';
+	for (var i=0; i<text.length; i++) {
+		result += replacements[128 + text.charCodeAt(i)];
+	}
+	return result;
+};
+
+function toHexString(text) {
+	var result = '';
+	var c;
+	for (var i=0; i<text.length; i++) {
+		c = text.charCodeAt(i).toString(16);
+		result += '0x' + (c.length == 1 ? '0' : '') + c + ' ';
+	}
+	return result;
+}
+
 function executeNodesCommand(options) {
   var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
@@ -247,11 +306,29 @@ function executeListen(options) {
     outputsWebSocket = new testbed.WebSocket(
       options.experimentId,
       function(message)      {
-        if (message.type == 'reservationEnded') {
+
+      	if (message.type == 'reservationEnded') {
+
           console.error('Reservation ended ' + moment(message.timestamp).fromNow() + '. Exiting.');
           process.exit(0);
+
+        } else if (message.type == 'upstream') {
+          /*
+          { type: 'upstream',
+		  payloadBase64: 'EAJoADB4MzogVWFydEVjaG8gc3RhcnRlZCEQAw==',
+		  sourceNodeUrn: 'urn:wisebed:uzl:staging1:0x0003',
+		  timestamp: '2013-11-21T16:37:43.470+01:00' }
+          */
+          var textArr = atob(message.payloadBase64);
+          var text    = replaceNonPrintableAsciiCharacters(textArr);
+          var hexText = toHexString(textArr);
+
+          if (options.format == 'csv') {
+            console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;") + ";" + hexText);
+      	  } else {
+      	  	console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText);
+      	  }
         }
-        console.log(message);
       },
       function(onOpenEvent)  { /* nothing to do here, is there? */ },
       function(onCloseEvent) { /* nothing to do here, is there? */ }
@@ -274,10 +351,13 @@ function addNodeFilterOptions(command) {
   return command;
 }
 
-var $ = require('jquery');
+var $         = require('jquery');
 var commander = require('commander');
-var wisebed = require('wisebed.js');
-var moment  = require('moment');
+var wisebed   = require('wisebed.js');
+var moment    = require('moment');
+var atob      = require('atob');
+var btoa      = require('btoa');
+
 var config;
 
 var commands = {
@@ -314,6 +394,7 @@ var commands = {
     action            : executeListen,
     nodeFilterOptions : true,
     options           : {
+      "-f, --format <format>"             : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
       "-o, --outputsOnly"                 : "show sensor node outputs only",
       "-e, --eventsOnly"                  : "show testbed events only",
       "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))"
