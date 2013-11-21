@@ -432,7 +432,7 @@ var commands = {
     nodeFilterOptions : true
   },
   'list-reservations' : {
-    description       : 'lists existing reservations (default query: all reservations currently running or starting in the future)',
+    description       : 'lists existing reservations (default: running and future)',
     action            : executeListReservationsCommand,
     nodeFilterOptions : true,
     options           : {
