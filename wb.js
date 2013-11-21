@@ -193,10 +193,15 @@ function toHexString(text) {
 	return result;
 }
 
-function executeNodesCommand(options) {
+/**
+ * Retrieves nodes from testbed self-description and, according to the selection options
+ * filters the returned set of nodes. If 'experimentId' is given the node selection is
+ * scoped to the set of currently reserved nodes.
+ */
+function retrieveNodes(options, experimentId, onSuccess, onFailure) {
   var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-  var onSuccess = function(wiseml) {
+  var onSuccessInternal = function(wiseml) {
   	var nodes = wiseml.setup.node;
     if (options.types) {
       nodes = filterWiseMLSetupForNodeTypes(options.types, nodes);
@@ -204,21 +209,83 @@ function executeNodesCommand(options) {
     if (options.sensors) {
       nodes = filterWiseMLSetupForSensors(options.sensors, nodes);
     }
-    console.log(nodes.map(options.details ? nodeToStringDetails : nodeToString).join("\n"));
+    onSuccess(nodes);
   };
+  testbed.getWiseML(experimentId, onSuccessInternal, onFailure, "json");
+}
+
+function retrieveTimespan(options) {
+  
+  var from     = options.from     ? moment(options.from)              : moment();
+  var duration = options.duration ? moment.duration(options.duration) : null;
+  var until    = options.until    ? moment(options.until)             : null;
+
+  if (until != null && duration != null) {
+  	console.error('Both parameters \"duration\" and \"until\" given. This is ambiguous. Exiting.');
+  	process.exit(1);
+  } else if (until == null && duration != null) {
+  	until = from.add(duration);
+  } else if (duration == null && until != null) {
+    duration = moment.duration(until.diff(from));
+  } else {
+    console.error('Neither parameter \"duration\" nor \"until\" was given. Cannot determine end of reservation. Exiting.');
+    process.exit(2);
+  }
+
+  if (from.isAfter(until)) {
+  	console.error('Interval begins after it ends. Does not make sense. Unless you\'re a time traveller. Exiting.');
+  	process.exit(3);
+  }
+
+  return { from : from, until : until, duration : duration };
+}
+
+function executeListNodesCommandInternal(options, experimentId) {
+
+  var onSuccess = function(nodes) {
+  	console.log(nodes.map(options.details ? nodeToStringDetails : nodeToString).join("\n"));
+  	process.exit(0);
+  };
+
   var onFailure = function(wiseML, textStatus, jqXHR) {
-    console.log("Error while fetching nodes from testbed: %s %s", textStatus, jqXHR);
+    console.error("Error while fetching nodes from testbed: %s %s", textStatus, jqXHR);
     process.exit(1);
   };
-  testbed.getWiseML(null, onSuccess, onFailure, "json");
+
+  retrieveNodes(options, experimentId, onSuccess, onFailure);
 }
 
-function executeReservedNodesCommand() {
-  console.log('reservedNodesCommand');
+function executeListNodesCommand(options) {
+  executeListNodesCommandInternal(options, null);
 }
 
-function executeMakeReservationCommand() {
-  console.log('makeReservationCommand');
+function executeListReservedNodesCommand(options) {
+  executeListNodesCommandInternal(options, getAssertExperimentId(options));
+}
+
+function executeMakeReservationCommand(options) {
+  
+  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+  var timespan = retrieveTimespan(options);
+
+  function onSuccess(nodes) {
+  	var nodeUrns = nodes.map(function(node) { return node.id; });
+  	testbed.reservations.make(
+        timespan.from,
+        timespan.until,
+        nodeUrns,
+        options.description ? options.description : null,
+        [],
+        function(crd) {
+          console.log(crd);
+        },
+        onAjaxFailure,
+        config.credentials
+    );
+  }
+
+  retrieveNodes(options, null, onSuccess, onAjaxFailure);
 }
 
 function executeListReservationsCommand(options) {
@@ -239,13 +306,7 @@ function executeListReservationsCommand(options) {
       process.exit(0);
 	}
 
-    function onGetPublicReservationsFailure(jqXHR, textStatus, errorThrown) {
-      console.log(jqXHR);
-      console.log(textStatus);
-      console.log(errorThrown);
-    }
-
-  	testbed.reservations.getPublic(from, to, onGetPublicReservationsSuccess, onGetPublicReservationsFailure);
+  	testbed.reservations.getPublic(from, to, onGetPublicReservationsSuccess, onAjaxFailure);
 
   } else {
 
@@ -255,21 +316,30 @@ function executeListReservationsCommand(options) {
   		});
   	}
 
-  	function onGetPersonalReservationsFailure(jqXHR, textStatus, errorThrown) {
-      console.log(jqXHR);
-      console.log(textStatus);
-      console.log(errorThrown);
-    }
-
     testbed.reservations.getPersonal(
     		from,
     		to,
     		onGetPersonalReservationsSuccess,
-    		onGetPersonalReservationsFailure,
+    		onAjaxFailure,
     		config.credentials
     );
   }
 }
+
+function onAjaxFailure(jqXHR, textStatus, errorThrown) {
+  console.error(jqXHR);
+  console.error(textStatus);
+  console.error(errorThrown);
+}
+
+function getAssertExperimentId(options) {
+  var experimentId = options.experimentId || process.env['WB_RESERVATION'];
+  if (!experimentId) {
+    console.error('Parameter "experimentId" missing. Exiting.');
+    process.exit(1);
+  }
+  return experimentId;
+};
 
 function executeListen(options) {
 
@@ -298,12 +368,7 @@ function executeListen(options) {
 
   if (outputs) {
 
-    var experimentId = options.experimentId || process.env['WB_RESERVATION'];
-
-  	if (!experimentId) {
-  	  console.error('Parameter "experimentId" missing. Exiting.');
-  	  process.exit(1);
-  	}
+    var experimentId = getAssertExperimentId(options);
 
     outputsWebSocket = new testbed.WebSocket(
       experimentId,
@@ -342,7 +407,7 @@ function executeFlash(options) {
 
   var config       = readConfigFromFile(options.config || process.env['WB_TESTBED']);
   var testbed      = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-  var experimentId = options.experimentId || process.env['WB_RESERVATION'];
+  var experimentId = getAssertExperimentId(options);
   var jsonConfig;
 
   if (!experimentId) {
@@ -378,13 +443,7 @@ function executeFlash(options) {
   	console.log(progress);
   };
 
-  var callbackError = function(jqXHR, textStatus, errorThrown) {
-    console.log(jqXHR);
-    console.log(textStatus);
-    console.log(errorThrown);
-  };
-
-  testbed.experiments.flashNodes(experimentId, jsonConfig, callbackDone, callbackProgress, callbackError);
+  testbed.experiments.flashNodes(experimentId, jsonConfig, callbackDone, callbackProgress, onAjaxFailure);
 }
 
 function addNodeFilterOptions(command) {
@@ -415,7 +474,7 @@ var config;
 var commands = {
   'nodes' : {
     description       : 'list available nodes',
-    action            : executeNodesCommand,
+    action            : executeListNodesCommand,
     nodeFilterOptions : true,
     options           : {
       "-d, --details" : "show sensor node details"
@@ -423,13 +482,21 @@ var commands = {
   },
   'reserved-nodes' : {
     description       : 'list nodes of current reservation',
-    action            : executeReservedNodesCommand,
+    action            : executeListReservedNodesCommand,
     nodeFilterOptions : true
   },
   'make-reservation' : {
     description       : 'makes a reservation',
     action            : executeMakeReservationCommand,
-    nodeFilterOptions : true
+    nodeFilterOptions : true,
+    options           : {
+      "-n, --nodes <nodes>"       : "a list of node URNs to be flashed (only if node filter options are not given)",
+      "-f, --from  <from> "       : "date and time of the reservation start (default: now, see moment.js documentation for allowed syntax)",
+      "-u, --until <until>"       : "date and time of the reservation end   (see moment.js documentation for allowed syntax)",
+      "-d, --duration <duration>" : "duration of the reservation (see moment.js documentation for allowed syntax)",
+      "-D, --description <desc>"  : "description of the reservation",
+      "-o, --options <options>"   : "options to save as reservation meta data (key/value pairs)"
+    }
   },
   'list-reservations' : {
     description       : 'lists existing reservations (default: running and future)',
