@@ -72,13 +72,8 @@ function readConfigFromFile(filename) {
   if (!config.websocket_base_url) {
     console.log("Parameter 'websocket_base_url' is missing in configuration file!");
   }
-  if (!config.username) {
-    console.log("Parameter 'username' is missing in configuration file!");
-    process.exit(1);
-  }
-  if (!config.password) {
-    console.log("Parameter 'password' is missing in configuration file!");
-    process.exit(1);
+  if (!config.credentials) {
+  	console.log("Parameter 'credentials' is missing in configuration file!");
   }
   return config;
 }
@@ -195,7 +190,25 @@ function executeListReservationsCommand(options) {
 
   } else {
 
-    testbed.reservations.getPersonal()
+  	function onGetPersonalReservationsSuccess(reservations) {
+  		reservations.forEach(function(reservation) {
+  			console.log(reservation);
+  		});
+  	}
+
+  	function onGetPersonalReservationsFailure(jqXHR, textStatus, errorThrown) {
+      console.log(jqXHR);
+      console.log(textStatus);
+      console.log(errorThrown);
+    }
+
+    testbed.reservations.getPersonal(
+    		from,
+    		to,
+    		onGetPersonalReservationsSuccess,
+    		onGetPersonalReservationsFailure,
+    		config.credentials
+    );
   }
 }
 
@@ -225,11 +238,17 @@ function executeListen(options) {
   }
 
   if (outputs) {
+
+  	if (!options.experimentId) {
+  	  console.error('Parameter "experimentId" missing. Exiting.');
+  	  process.exit(1);
+  	}
+
     outputsWebSocket = new testbed.WebSocket(
       options.experimentId,
       function(message)      {
         if (message.type == 'reservationEnded') {
-          console.log('Reservation ended. Exiting.');
+          console.error('Reservation ended ' + moment(message.timestamp).fromNow() + '. Exiting.');
           process.exit(0);
         }
         console.log(message);
@@ -266,7 +285,9 @@ var commands = {
     description       : 'list available nodes',
     action            : executeNodesCommand,
     nodeFilterOptions : true,
-    options           : { "-d, --details" : "show sensor node details" }
+    options           : {
+      "-d, --details" : "show sensor node details"
+    }
   },
   'reserved-nodes' : {
     description       : 'list nodes of current reservation',
