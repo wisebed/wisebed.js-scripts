@@ -1,0 +1,18 @@
+{
+	"configurations":[
+		{
+  			"nodeUrns" :[
+  				"urn:wisebed:uzl:staging1:0x0004",
+  				"urn:wisebed:uzl:staging1:0x0003"
+  			],
+  			"imageFile" : "/Users/bimschas/tb/bin/uart_echo.jn5148.bin"
+  		},
+		{
+  			"nodeUrns" :[
+  				"urn:wisebed:uzl:staging1:0x0001",
+  				"urn:wisebed:uzl:staging1:0x0002"
+  			],
+  			"imageFile" : "/Users/bimschas/tb/bin/uart_test.jn5148.bin"
+  		}
+	]
+}
