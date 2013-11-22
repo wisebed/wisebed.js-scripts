@@ -3,8 +3,8 @@
 /*
 
 ###########################################################################################
-WARNING: THIS HERE IS NOT DOCUMENTATION BUT THE ORIGINAL SPECIFICATION. USAGE DOCUMENTATION
-WILL BE GIVEN BY CALLING "wb.js --help"
+WARNING: THIS HERE IS NOT DOCUMENTATION BUT THE ORIGINAL SPECIFICATION / IDEAS COLLECTION.
+USAGE DOCUMENTATION WILL BE GIVEN BY CALLING "wb.js --help"
 ###########################################################################################
 
 If environment variable WB_TESTBED is set parameter -c is not necesarry but will
