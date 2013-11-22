@@ -57,38 +57,34 @@ wb reserved-wiseml       WB_TESTBED WB_RESERVATION                              
 
  */
 
-function readConfigFromFile(filename) {
-  var fs = require('fs');
-  if (!fs.existsSync(filename)) {
-    console.log("Configuration file '" + filename + "' does not exist!");
-    process.exit(1);
-  }
-  var file = fs.readFileSync(filename);
-  var config = JSON.parse(file);
-  if (!config.rest_api_base_url) {
-    console.log("Parameter 'rest_api_base_url' is missing in configuration file!");
-    process.exit(1);
-  }
-  if (!config.websocket_base_url) {
-    console.log("Parameter 'websocket_base_url' is missing in configuration file!");
-  }
-  if (!config.credentials) {
-  	console.log("Parameter 'credentials' is missing in configuration file!");
-  }
-  return config;
-}
+function readConfigOrExit(filename) {
 
-function readConfigOrExit() {
-  if (commander.config) {
-    console.log("Reading config from file");
-    config = readConfigFromFile(commander.c);
-  } else if (process.env.WB_TESTBED) {
-    console.log("Reading config from WB_TESTBED");
-    config = readConfigFromFile(process.env.WB_TESTBED);
-  } else {
-    console.log("Application parameter '-c' ('--config') is missing!");
-    process.exit(1);
-  }
+	function readConfigFromFile(filename) {
+		var fs = require('fs');
+		if (!fs.existsSync(filename)) {
+			console.log("Configuration file '" + filename + "' does not exist!");
+			process.exit(1);
+		}
+		var config = JSON.parse(fs.readFileSync(filename));
+		if (!config.rest_api_base_url) {
+			console.log("Parameter 'rest_api_base_url' is missing in configuration file!");
+			process.exit(1);
+		}
+		if (!config.websocket_base_url) {
+			console.log("Parameter 'websocket_base_url' is missing in configuration file!");
+		}
+		if (!config.credentials) {
+			console.log("Parameter 'credentials' is missing in configuration file!");
+		}
+		return config;
+	}
+
+	if (filename !== undefined) {
+		return readConfigFromFile(filename);
+	} else {
+		console.error("Parameter \"-c,--config\" or environment variable $WB_TESTBED is missing. Exiting.");
+		process.exit(1);
+	}
 }
 
 function filterWiseMLSetupForNodeTypes(nodeTypes, wiseMLNodeArr) {
@@ -199,7 +195,7 @@ function toHexString(text) {
  * scoped to the set of currently reserved nodes.
  */
 function retrieveNodes(options, experimentId, onSuccess, onFailure) {
-  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
   var onSuccessInternal = function(wiseml) {
   	var nodes = wiseml.setup.node;
@@ -216,28 +212,28 @@ function retrieveNodes(options, experimentId, onSuccess, onFailure) {
 
 function retrieveTimespan(options) {
   
-  var from     = options.from     ? moment(options.from)              : moment();
-  var duration = options.duration ? moment.duration(options.duration) : null;
-  var until    = options.until    ? moment(options.until)             : null;
+	var from     = options.from     ? moment(options.from)              : moment();
+	var duration = options.duration ? moment.duration(options.duration) : null;
+	var until    = options.until    ? moment(options.until)             : null;
 
-  if (until != null && duration != null) {
-  	console.error('Both parameters \"duration\" and \"until\" given. This is ambiguous. Exiting.');
-  	process.exit(1);
-  } else if (until == null && duration != null) {
-  	until = from.add(duration);
-  } else if (duration == null && until != null) {
-    duration = moment.duration(until.diff(from));
-  } else {
-    console.error('Neither parameter \"duration\" nor \"until\" was given. Cannot determine end of reservation. Exiting.');
-    process.exit(2);
-  }
+	if (until != null && duration != null) {
+		console.error('Both parameters \"duration\" and \"until\" given. This is ambiguous. Exiting.');
+		process.exit(1);
+	} else if (until == null && duration != null) {
+		until = moment(from).add(duration);
+	} else if (duration == null && until != null) {
+		duration = moment.duration(until.diff(from));
+	} else {
+		console.error('Neither parameter \"duration\" nor \"until\" was given. Cannot determine end of reservation. Exiting.');
+		process.exit(2);
+	}
 
-  if (from.isAfter(until)) {
-  	console.error('Interval begins after it ends. Does not make sense. Unless you\'re a time traveller. Exiting.');
-  	process.exit(3);
-  }
+	if (from.isAfter(until)) {
+		console.error('Interval begins after it ends. Does not make sense. Unless you\'re a time traveller. Exiting.');
+		process.exit(3);
+	}
 
-  return { from : from, until : until, duration : duration };
+	return { from : from, until : until, duration : duration };
 }
 
 function executeListNodesCommandInternal(options, experimentId) {
@@ -263,9 +259,30 @@ function executeListReservedNodesCommand(options) {
   executeListNodesCommandInternal(options, getAssertExperimentId(options));
 }
 
+function executeCurrentReservation(options) {
+
+	var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+
+	testbed.reservations.getPersonal(
+		moment(),
+		null,
+		function(reservations) {
+			if (reservations.length == 0) {
+				console.error('No reservations found. Exiting.');
+				process.exit(1);
+			} else {
+				console.log(reservations[reservations.length-1].experimentId);
+			}
+		},
+		onAjaxFailure,
+		config.credentials
+	);
+}
+
 function executeMakeReservationCommand(options) {
   
-  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
   var timespan = retrieveTimespan(options);
 
@@ -278,9 +295,12 @@ function executeMakeReservationCommand(options) {
         options.description ? options.description : null,
         [],
         function(crd) {
-          console.log(crd);
+          console.log(crd.experimentId);
         },
-        onAjaxFailure,
+        function(jqXHR, textStatus, errorThrown) {
+        	console.error(jqXHR.responseText);
+        	process.exit(jqXHR.status);
+        },
         config.credentials
     );
   }
@@ -290,7 +310,7 @@ function executeMakeReservationCommand(options) {
 
 function executeListReservationsCommand(options) {
 
-  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 
   var from = options.from ? moment(options.from) : new Date();
@@ -301,7 +321,7 @@ function executeListReservationsCommand(options) {
     function onGetPublicReservationsSuccess(reservations) {
       reservations.forEach(function(reservation) {
         var dateFormat = 'YYYY-MM-DD HH:mm:ss';
-        console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " => [" + reservation.nodeUrns.join(",") + "]");
+        console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " | [" + reservation.nodeUrns.join(",") + "]");
       });
       process.exit(0);
 	}
@@ -312,7 +332,8 @@ function executeListReservationsCommand(options) {
 
   	function onGetPersonalReservationsSuccess(reservations) {
   		reservations.forEach(function(reservation) {
-  			console.log(reservation);
+  			var dateFormat = 'YYYY-MM-DD HH:mm:ss';
+  			console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " | " + reservation.nodeUrns.length + " node(s) | " + reservation.experimentId + " | " + reservation.description);
   		});
   	}
 
@@ -335,7 +356,7 @@ function onAjaxFailure(jqXHR, textStatus, errorThrown) {
 function getAssertExperimentId(options) {
   var experimentId = options.experimentId || process.env['WB_RESERVATION'];
   if (!experimentId) {
-    console.error('Parameter "experimentId" missing. Exiting.');
+    console.error('Parameter "-i,--experimentId" or environment variable WB_RESERVATION missing. Exiting.');
     process.exit(1);
   }
   return experimentId;
@@ -343,7 +364,7 @@ function getAssertExperimentId(options) {
 
 function executeListen(options) {
 
-  var config = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 
   if (options.outputsOnly && options.eventsOnly) {
@@ -405,7 +426,7 @@ function executeListen(options) {
 
 function executeFlash(options) {
 
-  var config       = readConfigFromFile(options.config || process.env['WB_TESTBED']);
+  var config       = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed      = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
   var experimentId = getAssertExperimentId(options);
   var jsonConfig;
@@ -485,6 +506,10 @@ var commands = {
     action            : executeListReservedNodesCommand,
     nodeFilterOptions : true
   },
+  'current-reservation' : {
+    description       : 'prints the experimentId of the current reservation (if there\'s only one which is either running or running in the future)',
+    action            : executeCurrentReservation
+  },
   'make-reservation' : {
     description       : 'makes a reservation',
     action            : executeMakeReservationCommand,
@@ -549,4 +574,7 @@ for (var name in commands) {
   }
 }
 
-commander.parse(process.argv);
+var options = commander.parse(process.argv);
+if (options.args.length == 0) {
+	options.outputHelp();
+}
