@@ -48,13 +48,12 @@ wb make-reservation      WB_TESTBED                [NODES_FILTER] TIME_RANGE    
 wb list-reservations     WB_TESTBED                               [TIME_RANGE] [-a|--all]          - lists personal reservations in timespan (or all reservations if -a|--all is given)
 wb listen                WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - listens to sensor node outputs
 wb flash                 WB_TESTBED WB_RESERVATION [NODES_FILTER] img.bin                          - flashes nodes with provided image
+wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
+wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling areNodesAlive()
 
 ######## TODO ########
-wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
-wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
 wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG               - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
-wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling SM.areNodesAlive()
-wb ping                  WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - checks if nodes are alive by calling WSN.areNodesAlive()
+wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
 wb set-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER] h1,h2                            - set channel pipeline
 wb get-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - get current channel pipeline
 wb list-channel-handlers WB_TESTBED                                                                - list supported channel handlers
@@ -444,45 +443,64 @@ function executeListen(options) {
 
 function executeFlash(options) {
 
-  var config       = readConfigOrExit(options.config || process.env['WB_TESTBED']);
-  var testbed      = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-  var reservationId = getAssertReservationId(options);
-  var jsonConfig;
+	var config        = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed       = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = getAssertReservationId(options);
 
-  if (!reservationId) {
-    console.error('Parameter "reservationId" missing. Exiting.');
-    process.exit(1);
-  }
+	var jsonConfig;
 
-  if (options.file) {
+	if (!reservationId) {
+		console.error('Parameter "reservationId" missing. Exiting.');
+		process.exit(1);
+	}
 
-    jsonConfig = JSON.parse(fs.readFileSync(options.file));
-    jsonConfig.configurations.forEach(function(configuration) {
-      if (!configuration.image && configuration.imageFile) {
-      	configuration.image = "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile));
-      	delete configuration.imageFile;
-      }
-    });
+	if (options.file) {
 
-  } else if (options.image && options.nodes) {
+		jsonConfig = JSON.parse(fs.readFileSync(options.file));
+		jsonConfig.configurations.forEach(function(configuration) {
+			if (!configuration.image && configuration.imageFile) {
+				configuration.image = "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile));
+				delete configuration.imageFile;
+			}
+		});
 
-  	jsonConfig = {
-  		configurations : [{
-  			nodeUrns : options.nodes,
-  			image    : "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile))
-  		}]
-  	}
-  }
+	} else if (options.image && options.nodes) {
 
-  var callbackDone = function(result) {
-    console.log(result);
-  };
+		jsonConfig = {
+			configurations : [{
+				nodeUrns : options.nodes,
+				image    : "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile))
+			}]
+		}
+	}
 
-  var callbackProgress = function(progress) {
-  	console.log(progress);
-  };
+	testbed.experiments.flashNodes(
+		reservationId,
+		jsonConfig,
+		function(result)   { console.log(result);   },
+		function(progress) { console.log(progress); },
+		onAjaxFailure
+	);
+}
 
-  testbed.experiments.flashNodes(reservationId, jsonConfig, callbackDone, callbackProgress, onAjaxFailure);
+function executeAreNodesAlive(options) {
+
+	var config        = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed       = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = options.reservationId || process.env['WB_RESERVATION'];
+
+	retrieveNodes(options, reservationId, function(nodes) {
+
+		var nodeUrns = nodes.map(function(node) { return node.id; });
+		var callbackDone = function(result) { console.log(result); }
+
+		if (reservationId) {
+			testbed.experiments.areNodesAlive(reservationId, nodeUrns, callbackDone, onAjaxFailure);
+		} else {
+			testbed.experiments.areNodesConnected(nodeUrns, callbackDone, onAjaxFailure);
+		}
+
+	}, onAjaxFailure);
 }
 
 function addNodeFilterOptions(command) {
@@ -578,6 +596,15 @@ var commands = {
 	'reset' : {
 		description       : 'resets nodes',
 		action            : executeReset,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-n, --nodes <nodes>" : "a list of node URNs to be reset (only if \"-t,--types\" / \"-s,--sensors\" is not used"
+		}
+	},
+	'alive' : {
+		description       : 'checks if nodes are alive/connected',
+		action            : executeAreNodesAlive,
 		nodeFilterOptions : true,
 		idOption          : true,
 		options           : {
