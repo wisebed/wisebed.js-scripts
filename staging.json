@@ -1,0 +1,11 @@
+{
+  "rest_api_base_url"  : "http://staging.wisebed.itm.uni-luebeck.de:8888/rest/v1.0",
+  "websocket_base_url" : "ws://staging.wisebed.itm.uni-luebeck.de:8888/ws/v1.0",
+  "credentials"        : [
+    {
+      "urnPrefix" : "urn:wisebed:uzl:staging1:",
+      "username"  : "user1",
+      "password"  : "user1"
+    }
+  ]
+}
