@@ -50,6 +50,7 @@ wb listen                WB_TESTBED WB_RESERVATION [NODES_FILTER]               
 wb flash                 WB_TESTBED WB_RESERVATION [NODES_FILTER] img.bin                          - flashes nodes with provided image
 wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
 wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling areNodesAlive()
+wb wiseml                WB_TESTBED                                                                - prints the testbeds WiseML file
 
 ######## TODO ########
 wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG               - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
@@ -59,7 +60,6 @@ wb get-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER]               
 wb list-channel-handlers WB_TESTBED                                                                - list supported channel handlers
 wb enable-vlink          WB_TESTBED WB_RESERVATION                N1=N2([,N3=N4])*                 - sets virtual links from node N1 to node N2 and from each N3 to the corresponding N4 if given
 wb disable-vlink         WB_TESTBED WB_RESERVATION                N1=N2([,N3=N4])*                 - disables the virtual link from node N1 to node N2 and from each N3 to the corresponding N4 if given
-wb wiseml                WB_TESTBED                                                                - prints the testbeds WiseML file
 wb reserved-wiseml       WB_TESTBED WB_RESERVATION                                                 - prints the WiseML file, constained to the reserved nodes
 
  */
@@ -365,18 +365,26 @@ function executeReset(options) {
 }
 
 function onAjaxFailure(jqXHR, textStatus, errorThrown) {
-  console.error(jqXHR);
-  console.error(textStatus);
-  console.error(errorThrown);
+	console.error(jqXHR);
+	console.error(textStatus);
+	console.error(errorThrown);
+}
+
+function getReservationId(options) {
+	var reservationId = options.reservationId || process.env['WB_RESERVATION'];
+	if (reservationId == '') {
+		reservationId = undefined;
+	}
+	return reservationId;
 }
 
 function getAssertReservationId(options) {
-  var reservationId = options.reservationId || process.env['WB_RESERVATION'];
-  if (!reservationId) {
-    console.error('Parameter "-i,--reservationId" or environment variable WB_RESERVATION missing. Exiting.');
-    process.exit(1);
-  }
-  return reservationId;
+	var reservationId = getReservationId(options);
+	if (!reservationId) {
+		console.error('Parameter "-i,--reservationId" or environment variable WB_RESERVATION missing. Exiting.');
+		process.exit(1);
+	}
+	return reservationId;
 };
 
 function executeListen(options) {
@@ -487,7 +495,7 @@ function executeAreNodesAlive(options) {
 
 	var config        = readConfigOrExit(options.config || process.env['WB_TESTBED']);
 	var testbed       = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-	var reservationId = options.reservationId || process.env['WB_RESERVATION'];
+	var reservationId = getReservationId(options);
 
 	retrieveNodes(options, reservationId, function(nodes) {
 
@@ -501,6 +509,19 @@ function executeAreNodesAlive(options) {
 		}
 
 	}, onAjaxFailure);
+}
+
+function executeWiseML(options) {
+
+	var config  = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = getReservationId(options);
+
+	if (options.format && options.format == 'xml') {
+		testbed.getWiseMLAsXML(reservationId, function(wiseml) { console.log(wiseml); }, onAjaxFailure);
+	} else {
+		testbed.getWiseMLAsJSON(reservationId, function(wiseml) { console.log(wiseml); }, onAjaxFailure);
+	}
 }
 
 function addNodeFilterOptions(command) {
@@ -609,6 +630,14 @@ var commands = {
 		idOption          : true,
 		options           : {
 			"-n, --nodes <nodes>" : "a list of node URNs to be reset (only if \"-t,--types\" / \"-s,--sensors\" is not used"
+		}
+	},
+	'wiseml' : {
+		description       : 'prints the testbeds self-description in WiseML (default format: JSON serialization). if "-i, --id" is given prints only the part relevant to the current reservation.',
+		action            : executeWiseML,
+		idOption          : true,
+		options           : {
+			"-f, --format <'json'|'xml'>" : "the format of the WiseML file ('json' (default) or 'xml')"
 		}
 	}
 };
