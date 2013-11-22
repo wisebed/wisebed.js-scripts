@@ -2,6 +2,11 @@
 
 /*
 
+###########################################################################################
+WARNING: THIS HERE IS NOT DOCUMENTATION BUT THE ORIGINAL SPECIFICATION. USAGE DOCUMENTATION
+WILL BE GIVEN BY CALLING "wb.js --help"
+###########################################################################################
+
 If environment variable WB_TESTBED is set parameter -c is not necesarry but will
 be read from WB_TESTBED. If --config|-c is given whatsoever the value will override
 the value from WB_TESTBED. The same commanderlies to the environment variable WB_RESERVATION,
@@ -36,15 +41,18 @@ passing a tuple of -d|--duration and -o|--offset (where offset is optional, 0 is
 or a tuple of -f|--from and -u|--until. Time ranges options are denoted with TIME_RANGE
 below. 
 
+######## DONE ########
 wb nodes                 WB_TESTBED                [NODES_FILTER] [-d|--details]                   - lists available testbed nodes. If -d is given sensor node details are also printed.
 wb reserved-nodes        WB_TESTBED WB_RESERVATION [NODES_FILTER] [-v|--verbose]                   - lists resered nodes. If -v is given sensor node details are also printed.
 wb make-reservation      WB_TESTBED                [NODES_FILTER] TIME_RANGE                       - tries to reserve the given/all nodes for duration "-D|--duration" starting from "-O|--ofset"
 wb list-reservations     WB_TESTBED                               [TIME_RANGE] [-a|--all]          - lists personal reservations in timespan (or all reservations if -a|--all is given)
-wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
 wb listen                WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - listens to sensor node outputs
-wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
-wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
 wb flash                 WB_TESTBED WB_RESERVATION [NODES_FILTER] img.bin                          - flashes nodes with provided image
+
+######## TODO ########
+wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
+wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
+wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG               - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
 wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling SM.areNodesAlive()
 wb ping                  WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - checks if nodes are alive by calling WSN.areNodesAlive()
 wb set-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER] h1,h2                            - set channel pipeline
