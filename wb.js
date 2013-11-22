@@ -199,10 +199,10 @@ function toHexString(text) {
 
 /**
  * Retrieves nodes from testbed self-description and, according to the selection options
- * filters the returned set of nodes. If 'experimentId' is given the node selection is
+ * filters the returned set of nodes. If 'reservationId' is given the node selection is
  * scoped to the set of currently reserved nodes.
  */
-function retrieveNodes(options, experimentId, onSuccess, onFailure) {
+function retrieveNodes(options, reservationId, onSuccess, onFailure) {
   var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
   var onSuccessInternal = function(wiseml) {
@@ -215,7 +215,7 @@ function retrieveNodes(options, experimentId, onSuccess, onFailure) {
     }
     onSuccess(nodes);
   };
-  testbed.getWiseML(experimentId, onSuccessInternal, onFailure, "json");
+  testbed.getWiseML(reservationId, onSuccessInternal, onFailure, "json");
 }
 
 function retrieveTimespan(options) {
@@ -244,7 +244,7 @@ function retrieveTimespan(options) {
 	return { from : from, until : until, duration : duration };
 }
 
-function executeListNodesCommandInternal(options, experimentId) {
+function executeListNodesCommandInternal(options, reservationId) {
 
   var onSuccess = function(nodes) {
   	console.log(nodes.map(options.details ? nodeToStringDetails : nodeToString).join("\n"));
@@ -256,7 +256,7 @@ function executeListNodesCommandInternal(options, experimentId) {
     process.exit(1);
   };
 
-  retrieveNodes(options, experimentId, onSuccess, onFailure);
+  retrieveNodes(options, reservationId, onSuccess, onFailure);
 }
 
 function executeListNodesCommand(options) {
@@ -264,7 +264,7 @@ function executeListNodesCommand(options) {
 }
 
 function executeListReservedNodesCommand(options) {
-  executeListNodesCommandInternal(options, getAssertExperimentId(options));
+  executeListNodesCommandInternal(options, getAssertReservationId(options));
 }
 
 function executeCurrentReservation(options) {
@@ -280,7 +280,7 @@ function executeCurrentReservation(options) {
 				console.error('No reservations found. Exiting.');
 				process.exit(1);
 			} else {
-				console.log(reservations[reservations.length-1].experimentId);
+				console.log(reservations[reservations.length-1].reservationId);
 			}
 		},
 		onAjaxFailure,
@@ -303,7 +303,7 @@ function executeMakeReservationCommand(options) {
         options.description ? options.description : null,
         [],
         function(crd) {
-          console.log(crd.experimentId);
+          console.log(crd.reservationId);
         },
         function(jqXHR, textStatus, errorThrown) {
         	console.error(jqXHR.responseText);
@@ -341,7 +341,7 @@ function executeListReservationsCommand(options) {
   	function onGetPersonalReservationsSuccess(reservations) {
   		reservations.forEach(function(reservation) {
   			var dateFormat = 'YYYY-MM-DD HH:mm:ss';
-  			console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " | " + reservation.nodeUrns.length + " node(s) | " + reservation.experimentId + " | " + reservation.description);
+  			console.log(reservation.from.format(dateFormat) + " - " + reservation.to.format(dateFormat) + " | " + reservation.nodeUrns.length + " node(s) | " + reservation.reservationId + " | " + reservation.description);
   		});
   	}
 
@@ -355,19 +355,29 @@ function executeListReservationsCommand(options) {
   }
 }
 
+function executeReset(options) {
+	var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = getAssertReservationId(options);
+	retrieveNodes(options, reservationId, function(nodes) {
+		testbed.experiments.resetNodes(reservationId, nodes.map(function(node) {return node.id;}), function(result) {
+		}, onAjaxFailure)
+	}, onAjaxFailure);
+}
+
 function onAjaxFailure(jqXHR, textStatus, errorThrown) {
   console.error(jqXHR);
   console.error(textStatus);
   console.error(errorThrown);
 }
 
-function getAssertExperimentId(options) {
-  var experimentId = options.experimentId || process.env['WB_RESERVATION'];
-  if (!experimentId) {
-    console.error('Parameter "-i,--experimentId" or environment variable WB_RESERVATION missing. Exiting.');
+function getAssertReservationId(options) {
+  var reservationId = options.reservationId || process.env['WB_RESERVATION'];
+  if (!reservationId) {
+    console.error('Parameter "-i,--reservationId" or environment variable WB_RESERVATION missing. Exiting.');
     process.exit(1);
   }
-  return experimentId;
+  return reservationId;
 };
 
 function executeListen(options) {
@@ -397,10 +407,10 @@ function executeListen(options) {
 
   if (outputs) {
 
-    var experimentId = getAssertExperimentId(options);
+    var reservationId = getAssertReservationId(options);
 
     outputsWebSocket = new testbed.WebSocket(
-      experimentId,
+      reservationId,
       function(message)      {
 
       	if (message.type == 'reservationEnded') {
@@ -436,11 +446,11 @@ function executeFlash(options) {
 
   var config       = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var testbed      = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-  var experimentId = getAssertExperimentId(options);
+  var reservationId = getAssertReservationId(options);
   var jsonConfig;
 
-  if (!experimentId) {
-    console.error('Parameter "experimentId" missing. Exiting.');
+  if (!reservationId) {
+    console.error('Parameter "reservationId" missing. Exiting.');
     process.exit(1);
   }
 
@@ -472,7 +482,7 @@ function executeFlash(options) {
   	console.log(progress);
   };
 
-  testbed.experiments.flashNodes(experimentId, jsonConfig, callbackDone, callbackProgress, onAjaxFailure);
+  testbed.experiments.flashNodes(reservationId, jsonConfig, callbackDone, callbackProgress, onAjaxFailure);
 }
 
 function addNodeFilterOptions(command) {
@@ -501,85 +511,96 @@ var btoa      = require('btoa');
 var config;
 
 var commands = {
-  'nodes' : {
-    description       : 'list available nodes',
-    action            : executeListNodesCommand,
-    nodeFilterOptions : true,
-    options           : {
-      "-d, --details" : "show sensor node details"
-    }
-  },
-  'reserved-nodes' : {
-    description       : 'list nodes of current reservation',
-    action            : executeListReservedNodesCommand,
-    nodeFilterOptions : true
-  },
-  'current-reservation' : {
-    description       : 'prints the experimentId of the current reservation (if there\'s only one which is either running or running in the future)',
-    action            : executeCurrentReservation
-  },
-  'make-reservation' : {
-    description       : 'makes a reservation',
-    action            : executeMakeReservationCommand,
-    nodeFilterOptions : true,
-    options           : {
-      "-n, --nodes <nodes>"       : "a list of node URNs to be flashed (only if node filter options are not given)",
-      "-f, --from  <from> "       : "date and time of the reservation start (default: now, see moment.js documentation for allowed syntax)",
-      "-u, --until <until>"       : "date and time of the reservation end   (see moment.js documentation for allowed syntax)",
-      "-d, --duration <duration>" : "duration of the reservation (see moment.js documentation for allowed syntax)",
-      "-D, --description <desc>"  : "description of the reservation",
-      "-o, --options <options>"   : "options to save as reservation meta data (key/value pairs)"
-    }
-  },
-  'list-reservations' : {
-    description       : 'lists existing reservations (default: running and future)',
-    action            : executeListReservationsCommand,
-    nodeFilterOptions : true,
-    options           : {
-      "-a, --all"              : "lists all reservations (default: only personal reservations)",
-      "-f, --from  <datetime>" : "date and time of the query interval start (see moment.js documentation for allowed syntax)",
-      "-u, --until <datetime>" : "date and time of the query interval end   (see moment.js documentation for allowed syntax)"
-    }
-  },
-  'listen' : {
-    description       : 'listens to node outputs and testbed events',
-    action            : executeListen,
-    nodeFilterOptions : true,
-    options           : {
-      "-f, --format <format>"             : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
-      "-o, --outputsOnly"                 : "show sensor node outputs only",
-      "-e, --eventsOnly"                  : "show testbed events only",
-      "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))"
-    }
-  },
-  'flash' : {
-  	description       : 'flashes nodes',
-    action            : executeFlash,
-    nodeFilterOptions : true,
-    options           : {
-      "-i, --image <image>"               : "path to image file to be flashed  (if -f/--file is not used)",
-      "-n, --nodes <nodes>"               : "a list of node URNs to be flashed (if -f/--file is not used)",
-      "-i, --experimentId <experimentId>" : "the ID of the experiment (a Base64-encoded JSON-serialized (set of) secret reservation key(s))",
-      "-f, --file <file>"                 : "a flash configuration file"
-    }
-  }
+	'nodes' : {
+		description       : 'list available nodes',
+		action            : executeListNodesCommand,
+		nodeFilterOptions : true,
+		options           : {
+			"-d, --details" : "show sensor node details"
+		}
+	},
+	'reserved-nodes' : {
+		description       : 'list nodes of current reservation',
+		action            : executeListReservedNodesCommand,
+		nodeFilterOptions : true,
+		idOption          : true
+	},
+	'current-reservation' : {
+		description       : 'prints the ID of the current reservation (the youngest which is either running or starts in the future)',
+		action            : executeCurrentReservation
+	},
+	'make-reservation' : {
+		description       : 'makes a reservation and (if successful) prints its ID',
+		action            : executeMakeReservationCommand,
+		nodeFilterOptions : true,
+		options           : {
+			"-n, --nodes <nodes>"       : "a list of node URNs to be flashed (only if node filter options are not given)",
+			"-f, --from  <from> "       : "date and time of the reservation start (default: now, see moment.js documentation for allowed syntax)",
+			"-u, --until <until>"       : "date and time of the reservation end   (see moment.js documentation for allowed syntax)",
+			"-d, --duration <duration>" : "duration of the reservation (see moment.js documentation for allowed syntax)",
+			"-D, --description <desc>"  : "description of the reservation",
+			"-o, --options <options>"   : "options to save as reservation meta data (key/value pairs)"
+		}
+	},
+	'list-reservations' : {
+		description       : 'lists existing reservations (default: running and future)',
+		action            : executeListReservationsCommand,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-a, --all"              : "lists all reservations (default: only personal reservations)",
+			"-f, --from  <datetime>" : "date and time of the query interval start (see moment.js documentation for allowed syntax)",
+			"-u, --until <datetime>" : "date and time of the query interval end   (see moment.js documentation for allowed syntax)"
+		}
+	},
+	'listen' : {
+		description       : 'listens to node outputs and testbed events',
+		action            : executeListen,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-f, --format <format>" : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
+			"-o, --outputsOnly"     : "show sensor node outputs only",
+			"-e, --eventsOnly"      : "show testbed events only"
+		}
+	},
+	'flash' : {
+		description       : 'flashes nodes',
+		action            : executeFlash,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-i, --image <image>" : "path to image file to be flashed  (if -f/--file is not used)",
+			"-n, --nodes <nodes>" : "a list of node URNs to be flashed (if -f/--file is not used)",
+			"-f, --file <file>"   : "a flash configuration file"
+		}
+	},
+	'reset' : {
+		description       : 'resets nodes',
+		action            : executeReset,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-n, --nodes <nodes>" : "a list of node URNs to be reset (only if \"-t,--types\" / \"-s,--sensors\" is not used"
+		}
+	}
 };
 
 commander
-  .version('1.0')
-  .option('-H, --helpConfig', 'Print out help about the configuration file')
+	.version('1.0')
+	.option('-H, --helpConfig', 'Print out help about the configuration file')
 
 for (var name in commands) {
-  var cmd = commander
-    .command(name)
-    .description(commands[name].description)
-    .action(commands[name].action);
-  if (commands[name].nodeFilterOptions) {
-      addNodeFilterOptions(cmd);
-  }
-  for (option in commands[name].options) {
-  	cmd.option(option, commands[name].options[option]);
-  }
+	var cmd = commander.command(name).description(commands[name].description).action(commands[name].action);
+	if (commands[name].nodeFilterOptions) {
+		addNodeFilterOptions(cmd);
+	}
+	if (commands[name].idOption) {
+		cmd.option("-i, --id <id>", "the ID of the reservation");
+	}
+	for (option in commands[name].options)  {
+		cmd.option(option, commands[name].options[option]);
+	}
 }
 
 var options = commander.parse(process.argv);
