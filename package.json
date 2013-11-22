@@ -1,5 +1,5 @@
 {
-  "name" : "wb.js",
+  "name" : "wisebed.js-scripts",
   "main" : "wb.js",
   "version" : "0.1.0",
   "dependencies" : {
