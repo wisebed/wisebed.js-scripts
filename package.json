@@ -3,7 +3,8 @@
   "main" : "wb.js",
   "version" : "0.1.0",
   "dependencies" : {
-    "wisebed.js" : "1.0",
+    "jquery"     : "1.8.3",
+    "wisebed.js" : "0.1.0",
     "commander"  : "2.0.0",
     "moment"     : "2.4.0",
     "btoa"       : "1.1.1",
