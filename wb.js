@@ -202,19 +202,33 @@ function toHexString(text) {
  * scoped to the set of currently reserved nodes.
  */
 function retrieveNodes(options, reservationId, onSuccess, onFailure) {
-  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
-  var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
-  var onSuccessInternal = function(wiseml) {
-  	var nodes = wiseml.setup.node;
-    if (options.types) {
-      nodes = filterWiseMLSetupForNodeTypes(options.types, nodes);
-    }
-    if (options.sensors) {
-      nodes = filterWiseMLSetupForSensors(options.sensors, nodes);
-    }
-    onSuccess(nodes);
-  };
-  testbed.getWiseML(reservationId, onSuccessInternal, onFailure, "json");
+
+	var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	
+	var onSuccessInternal = function(wiseml) {
+		var nodes = wiseml.setup.node;
+		if (options.types) {
+			nodes = filterWiseMLSetupForNodeTypes(options.types, nodes);
+		}
+		if (options.sensors) {
+			nodes = filterWiseMLSetupForSensors(options.sensors, nodes);
+		}
+		onSuccess(nodes);
+	};
+
+	testbed.getWiseML(reservationId, onSuccessInternal, onFailure, "json");
+}
+
+function retrieveNodeUrns(options, reservationId, onSuccess, onFailure) {
+	
+	if (options.nodes) {
+		onSuccess(options.nodes.split(","));
+	} else {
+		retrieveNodes(options, reservationId, function(nodes) {
+			onSuccess(nodes.map(function(node) { return node.id; }));
+		}, onFailure);
+	}
 }
 
 function retrieveTimespan(options) {
@@ -462,33 +476,50 @@ function executeFlash(options) {
 		process.exit(1);
 	}
 
+	var createConfig;
+
 	if (options.file) {
 
-		jsonConfig = JSON.parse(fs.readFileSync(options.file));
-		jsonConfig.configurations.forEach(function(configuration) {
-			if (!configuration.image && configuration.imageFile) {
-				configuration.image = "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile));
-				delete configuration.imageFile;
-			}
-		});
+		createConfig = function(options, callbackDone, callbackError) {
+			jsonConfig = JSON.parse(fs.readFileSync(options.file));
+			jsonConfig.configurations.forEach(function(configuration) {
+				if (!configuration.image && configuration.imageFile) {
+					configuration.image = "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile));
+					delete configuration.imageFile;
+				}
+			});
+			callbackDone(jsonConfig);
+		};
 
-	} else if (options.image && options.nodes) {
+	} else if (options.image) {
 
-		jsonConfig = {
-			configurations : [{
-				nodeUrns : options.nodes,
-				image    : "data:application/octet-stream;base64," + btoa(fs.readFileSync(configuration.imageFile))
-			}]
-		}
+		createConfig = function(options, callbackDone, callbackError) {
+			retrieveNodeUrns(options, reservationId, function(nodeUrns) {
+				jsonConfig = {
+					configurations : [{
+						nodeUrns : nodeUrns,
+						image    : "data:application/octet-stream;base64," + btoa(fs.readFileSync(options.image))
+					}]
+				};
+				callbackDone(jsonConfig);
+			}, callbackError);
+		};
+
+	} else {
+
+		console.error("You must provide either \"--image\" or \"--file\". Exiting.");
+		process.exit(1);
 	}
 
-	testbed.experiments.flashNodes(
-		reservationId,
-		jsonConfig,
-		function(result)   { console.log(result);   },
-		function(progress) { console.log(progress); },
-		onAjaxFailure
-	);
+	createConfig(options, function(jsonConfig) {
+		testbed.experiments.flashNodes(
+			reservationId,
+			jsonConfig,
+			function(result)   { console.log(result);   },
+			function(progress) { console.log(progress); },
+			onAjaxFailure
+		);
+	}, onAjaxFailure);
 }
 
 function executeAreNodesAlive(options) {
@@ -522,6 +553,50 @@ function executeWiseML(options) {
 	} else {
 		testbed.getWiseMLAsJSON(reservationId, function(wiseml) { console.log(wiseml); }, onAjaxFailure);
 	}
+}
+
+function executeGetPipelineHandlers(options) {
+	
+	var config  = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = getAssertReservationId(options);
+
+	retrieveNodeUrns(options, reservationId, function(nodeUrns) {
+		var callbackDone = function(result) { console.log(result); }
+		console.log(testbed);
+		testbed.experiments.getChannelPipelines(reservationId, nodeUrns, callbackDone, onAjaxFailure);
+	}, onAjaxFailure);
+}
+
+function executeSetChannelPipeline(options) {
+
+	var config  = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
+	var reservationId = getAssertReservationId(options);
+
+	if (!options.pipeline) {
+		console.error("Missing parameter \"-p, --pipeline <handler_1[,handler_2[,...]]>\". Exiting.");
+		process.exit(1);
+	}
+
+	var pipeline = options.pipeline.split(",");
+	var handlers = [];
+
+	pipeline.forEach(function(p) {
+		handlers.push({
+			name : p
+		});
+	});
+
+	retrieveNodeUrns(options, reservationId, function(nodeUrns) {
+		testbed.experiments.setChannelPipelines(
+			reservationId,
+			nodeUrns,
+			handlers,
+			function(result) { console.log(result); },
+			onAjaxFailure
+		);
+	}, onAjaxFailure);
 }
 
 var $         = require('jquery');
@@ -595,7 +670,6 @@ var commands = {
 		idOption          : true,
 		options           : {
 			"-i, --image <image>" : "path to image file to be flashed  (if -f/--file is not used)",
-			"-n, --nodes <nodes>" : "a list of node URNs to be flashed (if -f/--file is not used)",
 			"-f, --file <file>"   : "a flash configuration file"
 		}
 	},
@@ -624,6 +698,20 @@ var commands = {
 		options           : {
 			"-f, --format <'json'|'xml'>" : "the format of the WiseML file ('json' (default) or 'xml')"
 		}
+	},
+	/*'get-pipeline-handlers' : {
+		description       : 'returns all availabel pipeline handlers and their descriptions',
+		action            : executeGetPipelineHandlers,
+		idOption          : true
+	},*/
+	'set-channel-pipeline' : {
+		description       : 'prints the testbeds self-description in WiseML (default format: JSON serialization). if "-i, --id" is given prints only the part relevant to the current reservation.',
+		action            : executeSetChannelPipeline,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-p, --pipeline <handler_1[,handler_2[,...]]>" : "comma-separated names of the pipeline handlers"
+		}
 	}
 };
 
@@ -638,14 +726,15 @@ for (var name in commands) {
 	cmd.option("-c, --config  <config>", "config file containing testbed configuration");
 
 	if (commands[name].nodeFilterOptions) {
-		cmd.option("-t, --types   <types>", "comma-separated list of node types to include");
-    	cmd.option("-s, --sensors <sensors>", "comma-separated list of sensors to filter for");
+		cmd.option("-n, --nodes   <nodelist>", "comma-separated list of node URNs (not for use in conjunction with --types and --sensors");
+		cmd.option("-t, --types   <types>", "comma-separated list of node types to include (not for use in conjuction with --nodes)");
+    	cmd.option("-s, --sensors <sensors>", "comma-separated list of sensors to filter for (not for use in conjuction with --nodes)");
 	}
 
 	if (commands[name].idOption) {
 		cmd.option("-i, --id <id>", "the ID of the reservation");
 	}
-	
+
 	for (option in commands[name].options)  {
 		cmd.option(option, commands[name].options[option]);
 	}
