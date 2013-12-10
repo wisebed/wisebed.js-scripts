@@ -524,21 +524,6 @@ function executeWiseML(options) {
 	}
 }
 
-function addNodeFilterOptions(command) {
-
-  var commonOptions = {
-    "-t, --types   <types>"   : "comma-separated list of node types to include",
-    "-s, --sensors <sensors>" : "comma-separated list of sensors to filter for",
-    "-c, --config  <config>"  : "config file containing testbed configuration"
-  };
-
-  for (var option in commonOptions) {
-    command.option(option, commonOptions[option]);
-  }
-
-  return command;
-}
-
 var $         = require('jquery');
 var fs        = require('fs');
 var commander = require('commander');
@@ -647,13 +632,20 @@ commander
 	.option('-H, --helpConfig', 'Print out help about the configuration file')
 
 for (var name in commands) {
+	
 	var cmd = commander.command(name).description(commands[name].description).action(commands[name].action);
+	
+	cmd.option("-c, --config  <config>", "config file containing testbed configuration");
+
 	if (commands[name].nodeFilterOptions) {
-		addNodeFilterOptions(cmd);
+		cmd.option("-t, --types   <types>", "comma-separated list of node types to include");
+    	cmd.option("-s, --sensors <sensors>", "comma-separated list of sensors to filter for");
 	}
+
 	if (commands[name].idOption) {
 		cmd.option("-i, --id <id>", "the ID of the reservation");
 	}
+	
 	for (option in commands[name].options)  {
 		cmd.option(option, commands[name].options[option]);
 	}
