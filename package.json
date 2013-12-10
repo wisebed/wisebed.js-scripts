@@ -1,13 +1,13 @@
 {
-  "name" : "wisebed.js-scripts",
-  "main" : "wb.js",
-  "version" : "0.1.4",
-  "dependencies" : {
-    "jquery"     : "1.8.3",
-    "wisebed.js" : "0.1.1",
-    "commander"  : "2.0.0",
-    "moment"     : "2.4.0",
-    "btoa"       : "1.1.1",
-    "atob"       : "1.1.0"
-  }
+	"name" : "wisebed.js-scripts",
+	"main" : "wb.js",
+	"version" : "0.1.4",
+	"dependencies" : {
+		"wisebed.js" : "0.1.2",
+		"jquery"     : "1.8.3",
+		"commander"  : "2.0.0",
+		"moment"     : "2.4.0",
+		"btoa"       : "1.1.1",
+		"atob"       : "1.1.0"
+	}
 }
