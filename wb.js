@@ -574,12 +574,12 @@ function executeSetChannelPipeline(options) {
 	var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
 	var reservationId = getAssertReservationId(options);
 
-	if (!options.pipeline) {
+	if (!options.pipeline && !options.clearPipeline) {
 		console.error("Missing parameter \"-p, --pipeline <handler_1[,handler_2[,...]]>\". Exiting.");
 		process.exit(1);
 	}
 
-	var pipeline = options.pipeline.split(",");
+	var pipeline = options.clearPipeline ? [] : options.pipeline.split(",");
 	var handlers = [];
 
 	pipeline.forEach(function(p) {
@@ -710,7 +710,8 @@ var commands = {
 		nodeFilterOptions : true,
 		idOption          : true,
 		options           : {
-			"-p, --pipeline <handler_1[,handler_2[,...]]>" : "comma-separated names of the pipeline handlers"
+			"-p, --pipeline <handler_1[,handler_2[,...]]>" : "comma-separated names of the pipeline handlers",
+			"-C, --clearPipeline" : "clears the pipeline of all handlers"
 		}
 	}
 };
