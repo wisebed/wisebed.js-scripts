@@ -307,8 +307,7 @@ function executeMakeReservationCommand(options) {
   var testbed = new wisebed.Wisebed(config.rest_api_base_url, config.websocket_base_url);
   var timespan = retrieveTimespan(options);
 
-  function onSuccess(nodes) {
-  	var nodeUrns = nodes.map(function(node) { return node.id; });
+  function onSuccess(nodeUrns) {
   	testbed.reservations.make(
         timespan.from,
         timespan.until,
@@ -326,7 +325,7 @@ function executeMakeReservationCommand(options) {
     );
   }
 
-  retrieveNodes(options, null, onSuccess, onAjaxFailure);
+  retrieveNodeUrns(options, null, onSuccess, onAjaxFailure);
 }
 
 function executeListReservationsCommand(options) {
