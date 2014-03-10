@@ -718,6 +718,10 @@ var commands = {
 commander
 	.version('1.0')
 	.option('-H, --helpConfig', 'Print out help about the configuration file')
+	.on('--help', function(){
+		console.log('  See README.md for more usage information!');
+		console.log('');
+	});
 
 for (var name in commands) {
 	
