@@ -51,11 +51,11 @@ wb flash                 WB_TESTBED WB_RESERVATION [NODES_FILTER] img.bin       
 wb reset                 WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - resets nodes
 wb alive                 WB_TESTBED                [NODES_FILTER]                                  - checks if nodes are alive by calling areNodesAlive()
 wb wiseml                WB_TESTBED                                                                - prints the testbeds WiseML file
+wb set-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER] h1,h2                            - set channel pipeline
 
 ######## TODO ########
 wb send                  WB_TESTBED WB_RESERVATION [NODES_FILTER] [-m bin|ascii] MSG               - sends the message MSG. MSG can either be a binary string, specified as comma-separated list of hex, decimal and binary values or an ascii string
 wb del-reservation       WB_TESTBED WB_RESERVATION                                                 - deletes the given reservation
-wb set-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER] h1,h2                            - set channel pipeline
 wb get-channel-handlers  WB_TESTBED WB_RESERVATION [NODES_FILTER]                                  - get current channel pipeline
 wb list-channel-handlers WB_TESTBED                                                                - list supported channel handlers
 wb enable-vlink          WB_TESTBED WB_RESERVATION                N1=N2([,N3=N4])*                 - sets virtual links from node N1 to node N2 and from each N3 to the corresponding N4 if given
