@@ -450,10 +450,23 @@ function executeListen(options) {
           var hexText = toHexString(textArr);
 
           if (options.format == 'csv') {
-            console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;") + ";" + hexText);
+            if (options.mode == 'hex') {
+              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + hexText);
+            } else if (options.mode == 'ascii') {
+              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;"));
+			} else {
+              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;") + ";" + hexText);
+			}
       	  } else {
-      	  	console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText);
+            if (options.mode == 'hex') {
+      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + hexText);
+            } else if (options.mode == 'ascii') {
+      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text);
+			} else {
+      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText);
+			}
       	  }
+
         }
       },
       function(onOpenEvent)  { /* nothing to do here, is there? */ },
@@ -658,6 +671,7 @@ var commands = {
 		idOption          : true,
 		options           : {
 			"-f, --format <format>" : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
+            "-m, --mode <hex|ascii>": "output mode (hex|ascii), both if ommitted", 
 			"-o, --outputsOnly"     : "show sensor node outputs only",
 			"-e, --eventsOnly"      : "show testbed events only"
 		}
