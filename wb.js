@@ -453,9 +453,9 @@ function executeListen(options) {
             if (options.mode == 'hex') {
               console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + hexText);
             } else if (options.mode == 'ascii') {
-              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;"));
+              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;"));
 			} else {
-              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replaceAll(/;/g, "\\;") + ";" + hexText);
+              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;") + ";" + hexText);
 			}
       	  } else {
             if (options.mode == 'hex') {
