@@ -400,6 +400,17 @@ function getAssertReservationId(options) {
 	return reservationId;
 };
 
+function executeLog(options) {
+
+  var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
+  var downloadUrl = config.rest_api_base_url + '/events/' + getAssertReservationId(options) + ".json";
+  
+  http.get(url.parse(downloadUrl), function(res) {
+  	res.pipe(process.stdout);
+  });
+
+}
+
 function executeListen(options) {
 
   var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
@@ -618,6 +629,8 @@ var wisebed   = require('wisebed.js');
 var moment    = require('moment');
 var atob      = require('atob');
 var btoa      = require('btoa');
+var http      = require('http');
+var url       = require('url');
 
 var config;
 
@@ -663,6 +676,10 @@ var commands = {
 			"-f, --from  <datetime>" : "date and time of the query interval start (see moment.js documentation for allowed syntax)",
 			"-u, --until <datetime>" : "date and time of the query interval end   (see moment.js documentation for allowed syntax)"
 		}
+	},
+	'log' : {
+		description       : 'downloads event and output log (JSON format)',
+		action            : executeLog
 	},
 	'listen' : {
 		description       : 'listens to node outputs and testbed events',
