@@ -404,11 +404,23 @@ function executeLog(options) {
 
   var config = readConfigOrExit(options.config || process.env['WB_TESTBED']);
   var downloadUrl = config.rest_api_base_url + '/events/' + getAssertReservationId(options) + ".json";
-  
-  http.get(url.parse(downloadUrl), function(res) {
-  	res.pipe(process.stdout);
-  });
 
+  if (options.raw) {
+
+    var downloadUrl = config.rest_api_base_url + '/events/' + getAssertReservationId(options) + ".json";
+    http.get(url.parse(downloadUrl), function(res) {
+      res.pipe(process.stdout);
+    });
+
+  } else {
+
+  	http.get(url.parse(downloadUrl), function(res) {
+      res.pipe(JSONStream.parse('*'))
+  	    .pipe(es.mapSync(formatStreamMessage(options)))
+  	    .pipe(es.mapSync(function(message) { return message + "\n"; }))
+  	    .pipe(process.stdout);
+    });
+  }
 }
 
 function executeListen(options) {
@@ -421,13 +433,10 @@ function executeListen(options) {
     process.exit(1);
   }
   
-  var events = !options.outputsOnly;
-  var outputs = !options.eventsOnly;
-
   var eventWebSocket;
   var outputsWebSocket;
 
-  if (events) {
+  if (!options.outputsOnly) {
     eventWebSocket = new testbed.EventWebSocket(
       function(devicesAttachedEvent) { console.log(devicesAttachedEvent);  },
       function(devicesDetachedEvent) { console.log(devicesDetachedEvent);  },
@@ -436,53 +445,72 @@ function executeListen(options) {
     );
   }
 
-  if (outputs) {
+  var reservationId = getAssertReservationId(options);
 
-    var reservationId = getAssertReservationId(options);
+  outputsWebSocket = new testbed.WebSocket(
+    reservationId,
+    onStreamMessage(options),
+    function(onOpenEvent)  { /* nothing to do here, is there? */ },
+    function(onCloseEvent) { /* nothing to do here, is there? */ }
+  );
+}
 
-    outputsWebSocket = new testbed.WebSocket(
-      reservationId,
-      function(message)      {
+function onStreamMessage(options) {
+  return function(message) {
+  	var fn = formatStreamMessage(options);
+    console.log(fn(message));
+    if (message.type == 'reservationEnded') {
+      process.exit(0);
+    }
+  }
+}
 
-      	if (message.type == 'reservationEnded') {
+function formatStreamMessage(options) {
 
-          console.error('Reservation ended ' + moment(message.timestamp).fromNow() + '. Exiting.');
-          process.exit(0);
+  var events = !options.outputsOnly;
+  var outputs = !options.eventsOnly;
 
-        } else if (message.type == 'upstream') {
-          /*
-          { type: 'upstream',
-		  payloadBase64: 'EAJoADB4MzogVWFydEVjaG8gc3RhcnRlZCEQAw==',
-		  sourceNodeUrn: 'urn:wisebed:uzl:staging1:0x0003',
-		  timestamp: '2013-11-21T16:37:43.470+01:00' }
-          */
-          var textArr = atob(message.payloadBase64);
-          var text    = replaceNonPrintableAsciiCharacters(textArr);
-          var hexText = toHexString(textArr);
+  return function(message) {
 
-          if (options.format == 'csv') {
-            if (options.mode == 'hex') {
-              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + hexText);
-            } else if (options.mode == 'ascii') {
-              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;"));
-			} else {
-              console.log(message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;") + ";" + hexText);
-			}
-      	  } else {
-            if (options.mode == 'hex') {
-      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + hexText);
-            } else if (options.mode == 'ascii') {
-      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text);
-			} else {
-      	  	  console.log(message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText);
-			}
-      	  }
+  	if (message.type == 'reservationStarted' && events) {
 
+      return 'Reservation started ' + moment(message.timestamp).fromNow();
+
+  	} else if (message.type == 'reservationEnded' && events) {
+
+      return 'Reservation ended ' + moment(message.timestamp).fromNow() + '. Exiting.';
+      
+    } else if (message.type == 'upstream' && outputs) {
+      
+      var textArr = atob(message.payloadBase64);
+      var text    = replaceNonPrintableAsciiCharacters(textArr);
+      var hexText = toHexString(textArr);
+
+      if (options.format == 'csv') {
+
+        if (options.mode == 'hex') {
+          return message.timestamp + ";" + message.sourceNodeUrn + ";" + hexText;
+        } else if (options.mode == 'ascii') {
+          return message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;");
+        } else {
+          return message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;") + ";" + hexText;
         }
-      },
-      function(onOpenEvent)  { /* nothing to do here, is there? */ },
-      function(onCloseEvent) { /* nothing to do here, is there? */ }
-    );
+
+      } else {
+
+        if (options.mode == 'hex') {
+          return message.timestamp + " | " + message.sourceNodeUrn + " | " + hexText;
+        } else if (options.mode == 'ascii') {
+          return message.timestamp + " | " + message.sourceNodeUrn + " | " + text;
+        } else {
+          return message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText;
+        }
+      }
+
+    } else if (events) {
+
+      return JSON.stringify(message);
+    }
   }
 }
 
@@ -622,15 +650,17 @@ function executeSetChannelPipeline(options) {
 	}, onAjaxFailure);
 }
 
-var $         = require('jquery');
-var fs        = require('fs');
-var commander = require('commander');
-var wisebed   = require('wisebed.js');
-var moment    = require('moment');
-var atob      = require('atob');
-var btoa      = require('btoa');
-var http      = require('http');
-var url       = require('url');
+var $          = require('jquery');
+var fs         = require('fs');
+var commander  = require('commander');
+var wisebed    = require('wisebed.js');
+var moment     = require('moment');
+var atob       = require('atob');
+var btoa       = require('btoa');
+var http       = require('http');
+var url        = require('url');
+var JSONStream = require('JSONStream');
+var es         = require('event-stream');
 
 var config;
 
@@ -679,7 +709,16 @@ var commands = {
 	},
 	'log' : {
 		description       : 'downloads event and output log (JSON format)',
-		action            : executeLog
+		action            : executeLog,
+		nodeFilterOptions : true,
+		idOption          : true,
+		options           : {
+			"-r, --raw"             : "download \"raw\" json only and print it to stdout (default: false, ignores filter and format options)",
+			"-f, --format <format>" : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
+            "-m, --mode <hex|ascii>": "output mode (hex|ascii), both if ommitted", 
+			"-o, --outputsOnly"     : "show sensor node outputs only",
+			"-e, --eventsOnly"      : "show testbed events only"
+		}
 	},
 	'listen' : {
 		description       : 'listens to node outputs and testbed events',
@@ -762,8 +801,8 @@ for (var name in commands) {
 
 	if (commands[name].nodeFilterOptions) {
 		cmd.option("-n, --nodes   <nodelist>", "comma-separated list of node URNs (not for use in conjunction with --types and --sensors");
-		cmd.option("-t, --types   <types>", "comma-separated list of node types to include (not for use in conjuction with --nodes)");
-    	cmd.option("-s, --sensors <sensors>", "comma-separated list of sensors to filter for (not for use in conjuction with --nodes)");
+		cmd.option("-t, --types   <types>",    "comma-separated list of node types to include (not for use in conjuction with --nodes)");
+    	cmd.option("-s, --sensors <sensors>",  "comma-separated list of sensors to filter for (not for use in conjuction with --nodes)");
 	}
 
 	if (commands[name].idOption) {
