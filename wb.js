@@ -196,6 +196,22 @@ function toHexString(text) {
 	return result;
 }
 
+function toDecString(text) {
+	var result = '';
+	var c;
+	for (var i=0; i<text.length; i++) {
+		c = text.charCodeAt(i).toString(10);
+		if (c.length == 1) {
+		  result += '00' + c + ' ';
+		} else if (c.length == 2) {
+		  result += '0' + c + ' ';
+		} else {
+		  result += c + ' ';
+		}
+	}
+	return result;
+}
+
 /**
  * Retrieves nodes from testbed self-description and, according to the selection options
  * filters the returned set of nodes. If 'reservationId' is given the node selection is
@@ -416,6 +432,7 @@ function executeLog(options) {
 
   	http.get(url.parse(downloadUrl), function(res) {
       res.pipe(JSONStream.parse('*'))
+  	    .pipe(es.through(filterStreamMessage(options)))
   	    .pipe(es.mapSync(formatStreamMessage(options)))
   	    .pipe(es.mapSync(function(message) { return message + "\n"; }))
   	    .pipe(process.stdout);
@@ -457,11 +474,51 @@ function executeListen(options) {
 
 function onStreamMessage(options) {
   return function(message) {
-  	var fn = formatStreamMessage(options);
-    console.log(fn(message));
+  	var print =
+  	  (options.eventsOnly && message.type != 'upstream') ||
+  	  (options.outputsOnly && message.type == 'upstream') ||
+  	  (!options.eventsOnly && !options.outputsOnly);
+  	if (print) {
+  	  var fn = formatStreamMessage(options);
+      console.log(fn(message));
+    }
     if (message.type == 'reservationEnded') {
       process.exit(0);
     }
+  }
+}
+
+function filterStreamMessage(options) {
+  return function(message) {
+  	var include =
+  	  (options.eventsOnly && message.type != 'upstream') ||
+  	  (options.outputsOnly && message.type == 'upstream') ||
+  	  (!options.eventsOnly && !options.outputsOnly);
+  	if (include) {
+     this.emit('data', message);
+  	}
+  }
+}
+
+function formatBinaryData(options, payloadBase64) {
+  
+  if (options.mode == 'hex') {
+
+  	return toHexString(atob(payloadBase64));
+
+  } else if (options.mode == 'dec') {
+
+    return toDecString(atob(payloadBase64));
+
+  } else if (options.mode == 'ascii') {
+
+  	var text = replaceNonPrintableAsciiCharacters(atob(payloadBase64));
+
+  	if (options.format == 'csv') {
+  	  text = text.replace(/;/g, "\\;");
+  	}
+
+  	return text;
   }
 }
 
@@ -472,45 +529,146 @@ function formatStreamMessage(options) {
 
   return function(message) {
 
-  	if (message.type == 'reservationStarted' && events) {
+  	var parts = [];
 
-      return 'Reservation started ' + moment(message.timestamp).fromNow();
+  	if (message.type == 'reservationStarted') {
 
-  	} else if (message.type == 'reservationEnded' && events) {
+      parts.push('Reservation started ' + moment(message.timestamp).fromNow());
 
-      return 'Reservation ended ' + moment(message.timestamp).fromNow() + '. Exiting.';
+  	} else if (message.type == 'reservationEnded') {
+
+      parts.push('Reservation ended ' + moment(message.timestamp).fromNow());
       
-    } else if (message.type == 'upstream' && outputs) {
+    } else if (message.type == 'upstream') {
       
-      var textArr = atob(message.payloadBase64);
-      var text    = replaceNonPrintableAsciiCharacters(textArr);
-      var hexText = toHexString(textArr);
+      parts.push(message.timestamp);
+      parts.push(message.sourceNodeUrn);
+      parts.push(formatBinaryData(options, message.payloadBase64));
 
-      if (options.format == 'csv') {
+    } else if (message.type == 'devicesAttached') {
+      
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.nodeUrns);
 
-        if (options.mode == 'hex') {
-          return message.timestamp + ";" + message.sourceNodeUrn + ";" + hexText;
-        } else if (options.mode == 'ascii') {
-          return message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;");
-        } else {
-          return message.timestamp + ";" + message.sourceNodeUrn + ";" + text.replace(/;/g, "\\;") + ";" + hexText;
-        }
+    } else if (message.type == 'devicesDetached') {
+      
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.nodeUrns);
 
+    } else if (message.type == 'areNodesAliveRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.areNodesAliveRequest.nodeUrns);
+      
+    } else if (message.type == 'areNodesConnectedRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.areNodesConnectedRequest.nodeUrns);
+      
+    } else if (message.type == 'disableNodesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.disableNodesRequest.nodeUrns);
+      
+    } else if (message.type == 'disableVirtualLinksRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.disableVirtualLinksRequest.links));
+      
+    } else if (message.type == 'disablePhysicalLinksRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.disablePhysicalLinksRequest.links));
+      
+    } else if (message.type == 'enableNodesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.enableNodesRequest.links));
+      
+    } else if (message.type == 'enablePhysicalLinksRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.enablePhysicalLinksRequest.links));
+      
+    } else if (message.type == 'enableVirtualLinksRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.enableVirtualLinksRequest.links));
+
+    } else if (message.type == 'flashImagesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.flashImagesRequest.nodeUrns);
+      
+    } else if (message.type == 'getChannelPipelinesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.getChannelPipelinesRequest.nodeUrns);
+      
+    } else if (message.type == 'resetNodesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.resetNodesRequest.nodeUrns);
+      
+    } else if (message.type == 'sendDownstreamMessagesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.sendDownstreamMessagesRequest.nodeUrns);
+      parts.push(formatBinaryData(options, message.sendDownstreamMessagesRequest.messageBytesBase64));
+      
+    } else if (message.type == 'setChannelPipelinesRequest') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(JSON.stringify(message.setChannelPipelinesRequest));
+      
+    } else if (message.type == 'singleNodeResponse') {
+
+      parts.push(message.timestamp);
+      parts.push(message.type);
+      parts.push(message.requestId);
+      parts.push(message.nodeUrn);
+      parts.push(message.statusCode);
+      if (message.statusCode >= 0) {
+      	parts.push(message.response ? message.response : '');
       } else {
-
-        if (options.mode == 'hex') {
-          return message.timestamp + " | " + message.sourceNodeUrn + " | " + hexText;
-        } else if (options.mode == 'ascii') {
-          return message.timestamp + " | " + message.sourceNodeUrn + " | " + text;
-        } else {
-          return message.timestamp + " | " + message.sourceNodeUrn + " | " + text + " | " + hexText;
-        }
+      	parts.push(message.errorMessage);
       }
-
+      
     } else if (events) {
 
+      // unknown message (e.g. for future additions)
       return JSON.stringify(message);
     }
+
+    return parts.join(options.format == 'csv' ? ';' : ' | ');
   }
 }
 
