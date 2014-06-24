@@ -1,0 +1,6 @@
+{
+  "rest_api_base_url"  : "http://portal.wisebed.itm.uni-luebeck.de/rest/v1.0/",
+  "websocket_base_url" : "ws://portal.wisebed.itm.uni-luebeck.de/ws/v1.0",
+  "username"           : "MYUSERNAME",
+  "password"           : "MYPAMYPASSWORD"
+}
