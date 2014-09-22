@@ -516,7 +516,6 @@ function formatBinaryData(options, payloadBase64) {
 
   } else if (options.mode == 'ascii') {
 
-	console.log('ascii');
   	var text = replaceNonPrintableAsciiCharacters(atob(payloadBase64));
 
   	if (options.format == 'csv') {
