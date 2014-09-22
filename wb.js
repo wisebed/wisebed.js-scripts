@@ -449,6 +449,10 @@ function executeListen(options) {
     console.log("Both --outputsOnly and --eventsOnly given. Doesn't make sense. Exiting.");
     process.exit(1);
   }
+
+  if (!options.mode) {
+    options.mode = 'ascii';
+  }
   
   var eventWebSocket;
   var outputsWebSocket;
@@ -512,6 +516,7 @@ function formatBinaryData(options, payloadBase64) {
 
   } else if (options.mode == 'ascii') {
 
+	console.log('ascii');
   	var text = replaceNonPrintableAsciiCharacters(atob(payloadBase64));
 
   	if (options.format == 'csv') {
@@ -885,7 +890,7 @@ var commands = {
 		idOption          : true,
 		options           : {
 			"-f, --format <format>" : "output format (\"\", \"csv\" or \"lines\", default: \"lines\")",
-            "-m, --mode <hex|ascii>": "output mode (hex|ascii), both if ommitted", 
+            "-m, --mode <hex|ascii>": "output mode (hex|dec|ascii), both if ommitted", 
 			"-o, --outputsOnly"     : "show sensor node outputs only",
 			"-e, --eventsOnly"      : "show testbed events only"
 		}
