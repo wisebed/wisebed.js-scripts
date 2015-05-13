@@ -456,7 +456,7 @@ function formatBinaryData(options, payloadBase64) {
 
     return toDecString(atob(payloadBase64));
 
-  } else if (options.mode == 'ascii') {
+  } else if (options.mode == 'ascii' || options.mode === undefined) {
 
   	var text = replaceNonPrintableAsciiCharacters(atob(payloadBase64));
 
@@ -474,7 +474,7 @@ function formatStreamMessage(options) {
   var outputs = !options.eventsOnly;
 
   return function(message) {
-
+		// TODO support reservationCancelled
   	var parts = [];
 
   	if (message.type == 'reservationStarted') {
