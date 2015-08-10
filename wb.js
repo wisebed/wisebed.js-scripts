@@ -351,7 +351,7 @@ function getReservationId(options) {
 function getAssertReservationId(options) {
 	var reservationId = getReservationId(options);
 	if (!reservationId) {
-		console.error('Parameter "-i,--reservationId" or environment variable WB_RESERVATION missing. Exiting.');
+		console.error('Reservation Id parameter "-i,--Id" or environment variable WB_RESERVATION missing. Exiting.');
 		process.exit(1);
 	}
 	return reservationId;
@@ -625,12 +625,6 @@ function executeFlash(options) {
 	var reservationId = getAssertReservationId(options);
 
 	var jsonConfig;
-
-	if (!reservationId) {
-		console.error('Parameter "reservationId" missing. Exiting.');
-		process.exit(1);
-	}
-
 	var createConfig;
 
 	if (options.file) {
